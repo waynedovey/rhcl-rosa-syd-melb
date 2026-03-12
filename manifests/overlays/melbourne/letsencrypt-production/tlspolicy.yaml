@@ -1,0 +1,14 @@
+apiVersion: kuadrant.io/v1
+kind: TLSPolicy
+metadata:
+  name: shared-app-gw-tls
+  namespace: api-gateway
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: shared-app-gw
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-production

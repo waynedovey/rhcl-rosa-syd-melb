@@ -1,0 +1,23 @@
+apiVersion: kuadrant.io/v1
+kind: DNSPolicy
+metadata:
+  name: shared-app-dns
+  namespace: api-gateway
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: shared-app-gw
+  providerRefs:
+    - name: aws-credentials
+  healthCheck:
+    failureThreshold: 3
+    interval: 1m
+    path: /health
+    port: 443
+    protocol: HTTPS
+    allowInsecureCertificate: true
+  loadBalancing:
+    defaultGeo: true
+    geo: GEO-NA
+    weight: 100
