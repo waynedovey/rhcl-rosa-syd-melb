@@ -3,10 +3,11 @@ set -euo pipefail
 
 usage() {
   cat <<USAGE
-Create an AWS IAM role ARN for the cert-manager Operator for Red Hat OpenShift on a ROSA STS cluster.
+Create or look up the AWS IAM role ARN required by OperatorHub when installing
+"cert-manager Operator for Red Hat OpenShift" on a ROSA STS cluster.
 
-This script creates a trust policy for the operator service account and creates an IAM role that you can
-paste into the OperatorHub "role ARN" field before installing the operator.
+This script creates the operator install role if it does not already exist.
+If it already exists, the script prints the existing ARN and exits successfully.
 
 Defaults:
   namespace: cert-manager-operator
@@ -33,14 +34,11 @@ Arguments:
   --policy-document PATH        Optional. JSON policy document to attach to the role.
   --policy-name NAME            Optional. Defaults to <role-name>-policy when --policy-document is used.
   --output-dir PATH             Optional. Default: ./generated/iam
-  --tags k=v,k=v               Optional. Comma-separated AWS IAM tags.
+  --tags k=v,k=v                Optional. Comma-separated AWS IAM tags.
 
 Notes:
-  * For the OperatorHub install screen on ROSA STS, Red Hat documents entering the ARN of the AWS IAM role
-    for the operator service account. Use the ARN printed by this script in that field.
-  * The Route53 DNS-01 role used by the cert-manager controller for Let's Encrypt is separate from this
-    operator install role.
-  * If your installed namespace or service account differ from the defaults, override them with flags.
+  * Paste the printed ARN into the OperatorHub "role ARN" field.
+  * This is the operator install role, not the separate Route53 DNS-01 role used by the cert-manager controller.
 USAGE
 }
 
@@ -78,10 +76,8 @@ if [[ -z "$CLUSTER_NAME" ]]; then
   exit 1
 fi
 
-if [[ -z "$OIDC_ENDPOINT" ]]; then
-  if [[ -n "$OC_CONTEXT" ]]; then
-    OIDC_ENDPOINT="$(oc --context="$OC_CONTEXT" get authentication.config.openshift.io cluster -o jsonpath='{.spec.serviceAccountIssuer}' 2>/dev/null | sed 's|^https://||')"
-  fi
+if [[ -z "$OIDC_ENDPOINT" && -n "$OC_CONTEXT" ]]; then
+  OIDC_ENDPOINT="$(oc --context="$OC_CONTEXT" get authentication.config.openshift.io cluster -o jsonpath='{.spec.serviceAccountIssuer}' 2>/dev/null | sed 's|^https://||')"
 fi
 
 if [[ -z "$OIDC_ENDPOINT" ]]; then
@@ -116,6 +112,23 @@ cat > "$TRUST_POLICY" <<JSON
 }
 JSON
 
+EXISTING_ARN="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text 2>/dev/null || true)"
+if [[ -n "$EXISTING_ARN" && "$EXISTING_ARN" != "None" ]]; then
+  echo "IAM role already exists: ${ROLE_NAME}" >&2
+  echo
+  echo "Existing role ARN:"
+  echo "$EXISTING_ARN"
+  echo
+  echo "Use this value in the OperatorHub \"role ARN\" field for the cert-manager Operator for Red Hat OpenShift."
+  echo
+  echo "Assumed subject:"
+  echo "system:serviceaccount:${NAMESPACE}:${SERVICE_ACCOUNT}"
+  echo
+  echo "Trust policy source file:"
+  echo "$TRUST_POLICY"
+  exit 0
+fi
+
 echo "Creating IAM role: ${ROLE_NAME}"
 CREATE_ARGS=(aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "file://${TRUST_POLICY}" --output json)
 if [[ -n "$TAGS" ]]; then
@@ -136,8 +149,15 @@ if [[ -n "$POLICY_DOCUMENT" ]]; then
     echo "Policy document not found: $POLICY_DOCUMENT" >&2
     exit 1
   fi
-  POLICY_ARN="$(aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "file://${POLICY_DOCUMENT}" --query 'Policy.Arn' --output text)"
-  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN" >/dev/null
+  EXISTING_POLICY_ARN="$(aws iam list-policies --scope Local --query "Policies[?PolicyName=='${POLICY_NAME}'].Arn | [0]" --output text 2>/dev/null || true)"
+  if [[ -n "$EXISTING_POLICY_ARN" && "$EXISTING_POLICY_ARN" != "None" ]]; then
+    POLICY_ARN="$EXISTING_POLICY_ARN"
+    echo "Using existing policy: $POLICY_ARN"
+  else
+    POLICY_ARN="$(aws iam create-policy --policy-name "$POLICY_NAME" --policy-document "file://${POLICY_DOCUMENT}" --query 'Policy.Arn' --output text)"
+    echo "Created policy: $POLICY_ARN"
+  fi
+  aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN" >/dev/null || true
   echo "Attached policy: $POLICY_ARN"
 else
   echo "No policy attached. This is fine if the operator itself does not need AWS API permissions in your setup."
