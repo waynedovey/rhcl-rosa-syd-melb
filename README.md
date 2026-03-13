@@ -165,14 +165,19 @@ This creates:
 #### Sydney
 
 ```bash
-./scripts/create-route53-secret.sh rosa-syd <AWS_ACCESS_KEY_ID> <AWS_SECRET_ACCESS_KEY> ap-southeast-2
+export AWS_ACCESS_KEY_ID=<AWS_ACCESS_KEY_ID>
+export AWS_SECRET_ACCESS_KEY=<AWS_SECRET_ACCESS_KEY>
+export AWS_REGION=ap-southeast-2
+./scripts/create-route53-secret.sh rosa-syd
 ```
 
 #### Melbourne
 
 ```bash
-./scripts/create-route53-secret.sh rosa-melb <AWS_ACCESS_KEY_ID> <AWS_SECRET_ACCESS_KEY> ap-southeast-2
+./scripts/create-route53-secret.sh rosa-melb
 ```
+
+The script prefers environment variables for AWS credentials and region. Positional arguments are still supported as a fallback, but environment variables are the recommended and safer default.
 
 ### Step 3. Ensure cert-manager operand exists
 
