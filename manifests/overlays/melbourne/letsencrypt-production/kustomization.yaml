@@ -1,9 +1,12 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 resources:
-  - ../../../base
+  - ../../../base/namespaces.yaml
+  - ../../../base/istio.yaml
+  - ../../../base/istiocni.yaml
+  - ../../../base/gateway.yaml
+  - ../../../base/backend-melbourne.yaml
+  - ../../../base/httproute-melbourne.yaml
   - clusterissuer.yaml
-  - tlspolicy.yaml
-  - backend.yaml
-  - httproute.yaml
   - dnspolicy.yaml
+  - tlspolicy.yaml
+commonLabels:
+  location: melbourne

@@ -1,92 +1,103 @@
-# RHCL on ROSA Sydney + Melbourne with Kustomize and Let's Encrypt
+# RHCL on ROSA (Sydney + Melbourne) with Kustomize
 
-This repo deploys a two-cluster Red Hat Connectivity Link setup across:
+This repo deploys:
+
+- Red Hat Connectivity Link / Kuadrant Gateway policies
+- OpenShift Service Mesh 3 runtime (`Istio` + `IstioCNI`)
+- a demo app in each cluster
+- shared external DNS via Route 53
+- TLS via either self-signed certs or Let's Encrypt DNS-01
+- traffic shifting between Sydney and Melbourne using `DNSPolicy` weights
+
+Validated hostname used in this repo:
+
+- `greenblue.sandbox3573.opentlc.com`
+
+Validated Route 53 hosted zone ID:
+
+- `Z07828883BTBHTW06APRZ`
+
+Validated Let's Encrypt email:
+
+- `wdovey@gmail.com`
+
+## What this repo does and does not do
+
+This repo **does** include:
+
+- complete manifests for app + Gateway + RHCL + TLS
+- Kustomize overlays for Sydney and Melbourne
+- helper scripts for IAM, secrets, annotation, restart, cleanup, verification
+
+This repo **does not** install Operators automatically from OperatorHub. Those are prerequisites and are documented below.
+
+---
+
+## Prerequisites
+
+### 1. Tools
+
+You need:
+
+- `oc`
+- `aws`
+- `jq`
+- `kustomize` (or `oc apply -k` support)
+- access to both ROSA clusters
+
+### 2. ROSA contexts
+
+Expected contexts:
 
 - `rosa-syd`
 - `rosa-melb`
 
-It publishes a shared external hostname:
-
-- `greenblue.sandbox3573.opentlc.com`
-
-and supports:
-
-- OpenShift Service Mesh 3 as the Gateway API provider
-- RHCL `DNSPolicy` for weighted DNS across both clusters
-- RHCL `TLSPolicy` for TLS on the shared Gateway
-- self-signed bootstrap or Let's Encrypt Route53 DNS-01
-- Kustomize overlays per cluster and certificate mode
-
-## Repository layout
-
-```text
-manifests/
-  base/
-  overlays/
-    sydney/
-      selfsigned/
-      letsencrypt-staging/
-      letsencrypt-production/
-    melbourne/
-      selfsigned/
-      letsencrypt-staging/
-      letsencrypt-production/
-scripts/
-  create-cert-manager-operator-role.sh
-  create-route53-secret.sh
-```
-
-## Prerequisites
-
-You need the following before applying manifests:
-
-- `oc` logged into both clusters with contexts named `rosa-syd` and `rosa-melb`
-- AWS CLI configured for the account that owns Route53 zone `sandbox3573.opentlc.com`
-- Route53 hosted zone ID: `Z07828883BTBHTW06APRZ`
-- Let's Encrypt email: `wdovey@gmail.com`
-- Red Hat Connectivity Link operator installed on both clusters
-- Red Hat OpenShift Service Mesh 3 installed on both clusters
-- cert-manager Operator for Red Hat OpenShift installed on both clusters
-
-## Required operator and runtime order
-
-Use this order from scratch:
-
-1. Log into both ROSA clusters and create friendly contexts.
-2. Generate the **cert-manager Operator** role ARN for each cluster.
-3. Install the **cert-manager Operator for Red Hat OpenShift** in OperatorHub using that role ARN.
-4. Install the **Red Hat Connectivity Link** operator.
-5. Install the **Red Hat OpenShift Service Mesh 3** operator.
-6. Create `istio-system` and `istio-cni` namespaces.
-7. Create the `Istio` and `IstioCNI` runtime resources.
-8. Create the RHCL Route53 secret in `api-gateway`.
-9. Apply the Kustomize overlays.
-
-## 1. Prepare ROSA contexts
-
-Rename contexts if needed:
+Verify:
 
 ```bash
-oc config get-contexts -o name
-oc config rename-context '<melb-context-name>' rosa-melb
-oc config rename-context '<syd-context-name>' rosa-syd
+oc --context=rosa-syd whoami
+oc --context=rosa-melb whoami
 ```
 
-## 2. Create the cert-manager Operator role ARN before OperatorHub install
+### 3. Route 53 hosted zone and delegation
 
-On ROSA STS, the OperatorHub install page for the **cert-manager Operator for Red Hat OpenShift** requires a **role ARN**.
-This must exist **before** you install the operator.
+This repo assumes the public hosted zone already exists and is delegated correctly:
 
-The helper script below creates the AWS IAM role if it does not already exist.
-If it already exists, it prints the existing ARN and exits successfully so you can paste it into OperatorHub.
+- `sandbox3573.opentlc.com`
 
-Default assumptions used by the script:
+Verify the zone ID:
 
-- namespace: `cert-manager-operator`
-- service account: `cert-manager-operator-controller-manager`
-- role name: `<cluster-name>-cert-manager-operator`
+```bash
+export DOMAIN='sandbox3573.opentlc.com'
+export ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+  --dns-name "${DOMAIN}." \
+  --query 'HostedZones[0].Id' \
+  --output text | sed 's|/hostedzone/||')
 
-### Sydney
+echo "$ZONE_ID"
+```
+
+Expected:
+
+```text
+Z07828883BTBHTW06APRZ
+```
+
+### 4. Operators required on **both** clusters
+
+Install these from OperatorHub on **both** Sydney and Melbourne:
+
+- Red Hat Connectivity Link
+- Red Hat OpenShift Service Mesh 3
+- cert-manager Operator for Red Hat OpenShift
+
+### 5. cert-manager Operator role ARN prerequisite
+
+On ROSA STS, the **cert-manager Operator** install requires a role ARN in OperatorHub.
+
+Generate that **before** installing the operator:
+
+#### Sydney
 
 ```bash
 ./scripts/create-cert-manager-operator-role.sh \
@@ -94,7 +105,7 @@ Default assumptions used by the script:
   --oc-context rosa-syd
 ```
 
-### Melbourne
+#### Melbourne
 
 ```bash
 ./scripts/create-cert-manager-operator-role.sh \
@@ -102,165 +113,294 @@ Default assumptions used by the script:
   --oc-context rosa-melb
 ```
 
-Paste the printed ARN into the OperatorHub **role ARN** field for the cert-manager Operator install.
+The script prints the role ARN. Paste that ARN into the OperatorHub install dialog for cert-manager Operator.
 
-## 3. Install required operators in OperatorHub
+If the role already exists, the script prints the existing ARN and exits successfully.
 
-Install these on **both** clusters:
+### 6. cert-manager controller Route 53 role prerequisite
 
-- **cert-manager Operator for Red Hat OpenShift**
-  - Update channel: `stable-v1`
-  - Installation mode: `All namespaces on the cluster`
-  - Installed namespace: `cert-manager-operator`
-  - Use the role ARN printed by `create-cert-manager-operator-role.sh`
-- **Red Hat Connectivity Link**
-- **Red Hat OpenShift Service Mesh 3**
+The cert-manager **controller** needs a Route 53-capable role for DNS-01.
 
-## 4. Create Service Mesh runtime namespaces and resources
+Use the same role generated by `create-cert-manager-operator-role.sh` **only if** its trust policy is for:
 
-Create namespaces:
+- `system:serviceaccount:cert-manager:cert-manager`
 
-```bash
-oc --context=rosa-syd create namespace istio-system --dry-run=client -o yaml | oc --context=rosa-syd apply -f -
-oc --context=rosa-syd create namespace istio-cni --dry-run=client -o yaml | oc --context=rosa-syd apply -f -
-oc --context=rosa-melb create namespace istio-system --dry-run=client -o yaml | oc --context=rosa-melb apply -f -
-oc --context=rosa-melb create namespace istio-cni --dry-run=client -o yaml | oc --context=rosa-melb apply -f -
-```
+and it has Route 53 policy attached.
 
-Create `Istio` and `IstioCNI` resources using the manifests in the repo, then verify a `gatewayclass` exists.
+This repo’s role creation script does that.
 
-## 5. Create the RHCL Route53 secret on both clusters
+---
 
-Export AWS credentials with write access to the hosted zone:
+## Deployment order
+
+Follow this exact order.
+
+### Step 1. Create Service Mesh namespaces and runtime
+
+#### Sydney
 
 ```bash
-export AWS_ACCESS_KEY_ID='<route53-access-key-id>'
-export AWS_SECRET_ACCESS_KEY='<route53-secret-access-key>'
-export AWS_REGION='ap-southeast-2'
+oc --context=rosa-syd apply -k manifests/overlays/sydney/selfsigned
 ```
 
-Then create the secret:
+#### Melbourne
 
 ```bash
-./scripts/create-route53-secret.sh rosa-syd
-./scripts/create-route53-secret.sh rosa-melb
+oc --context=rosa-melb apply -k manifests/overlays/melbourne/selfsigned
 ```
 
-This script now uses the supplied context for **both** namespace creation and secret creation.
+This creates:
 
-## 6. Configure cert-manager for ROSA STS Route53 DNS-01
+- `istio-system`
+- `istio-cni`
+- `api-gateway`
+- `demo-app`
+- `Istio`
+- `IstioCNI`
+- demo backend app and route
+- Gateway
 
-Annotate the `cert-manager` service account with the separate Route53 DNS-01 IAM role used by the cert-manager controller.
-This is **not** the same as the operator install role created earlier.
+### Step 2. Create Route 53 provider secret in `api-gateway`
+
+#### Sydney
 
 ```bash
-./scripts/annotate-cert-manager-sa.sh rosa-syd arn:aws:iam::<ACCOUNT_ID>:role/rosa-syd-cert-manager-operator
-./scripts/annotate-cert-manager-sa.sh rosa-melb arn:aws:iam::<ACCOUNT_ID>:role/rosa-melb-cert-manager-operator
+./scripts/create-route53-secret.sh rosa-syd <AWS_ACCESS_KEY_ID> <AWS_SECRET_ACCESS_KEY> ap-southeast-2
 ```
 
-## 7. Bootstrap with self-signed certs (optional but recommended)
-
-This gets the gateway, DNS, backend apps, and TLS online quickly.
+#### Melbourne
 
 ```bash
-./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/selfsigned
-./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/selfsigned
+./scripts/create-route53-secret.sh rosa-melb <AWS_ACCESS_KEY_ID> <AWS_SECRET_ACCESS_KEY> ap-southeast-2
 ```
 
-## 8. Move to Let's Encrypt staging
+### Step 3. Ensure cert-manager operand exists
+
+On both clusters, verify:
 
 ```bash
-./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-staging
-./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-staging
+oc --context=rosa-syd get ns cert-manager
+oc --context=rosa-syd get pods -n cert-manager
+
+oc --context=rosa-melb get ns cert-manager
+oc --context=rosa-melb get pods -n cert-manager
 ```
 
-Watch certificate issuance:
+Do **not** continue until the cert-manager namespace and pods exist.
+
+### Step 4. Annotate cert-manager service account with Route 53 role
+
+This step is required for Let's Encrypt DNS-01.
+
+#### Sydney
 
 ```bash
-oc --context=rosa-syd -n api-gateway get certificates,certificaterequests,secrets
-oc --context=rosa-melb -n api-gateway get certificates,certificaterequests,secrets
+./scripts/annotate-cert-manager-sa.sh \
+  rosa-syd \
+  arn:aws:iam::<ACCOUNT_ID>:role/rosa-syd-cert-manager-operator
 ```
 
-## 9. Promote to Let's Encrypt production
+#### Melbourne
 
 ```bash
-./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
-./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
+./scripts/annotate-cert-manager-sa.sh \
+  rosa-melb \
+  arn:aws:iam::<ACCOUNT_ID>:role/rosa-melb-cert-manager-operator
 ```
 
-Re-check the certificate:
+This script now:
+
+- annotates `serviceaccount/cert-manager`
+- deletes the cert-manager pod
+- waits for the new pod
+- verifies `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE`
+
+### Step 5. Restart Kuadrant after cert-manager install
+
+If cert-manager was installed after Kuadrant, restart the Kuadrant operator on both clusters.
+
+#### Sydney
 
 ```bash
-openssl s_client -connect greenblue.sandbox3573.opentlc.com:443 -servername greenblue.sandbox3573.opentlc.com </dev/null 2>/dev/null | openssl x509 -noout -issuer -subject -dates
+./scripts/restart-kuadrant.sh rosa-syd
 ```
 
-## 10. Validate public DNS and app access
+#### Melbourne
 
 ```bash
-dig greenblue.sandbox3573.opentlc.com +noall +answer
-curl -v https://greenblue.sandbox3573.opentlc.com
+./scripts/restart-kuadrant.sh rosa-melb
 ```
 
-If your Mac still resolves stale data, flush DNS cache:
+This uses the correct deployment:
+
+- `openshift-operators/deployment/kuadrant-operator-controller-manager`
+
+It does **not** delete all pods in `openshift-operators`.
+
+### Step 6. Apply Let's Encrypt production overlays
+
+#### Sydney
 
 ```bash
-sudo dscacheutil -flushcache
-sudo killall -HUP mDNSResponder
+oc --context=rosa-syd apply -k manifests/overlays/sydney/letsencrypt-production
 ```
 
-## 11. Switch traffic between Sydney and Melbourne
-
-All traffic to Melbourne:
+#### Melbourne
 
 ```bash
-./scripts/switch-to-melbourne.sh
+oc --context=rosa-melb apply -k manifests/overlays/melbourne/letsencrypt-production
 ```
 
-All traffic to Sydney:
+### Step 7. If ACME issuance gets stuck, clean it up and re-apply
+
+#### Sydney
 
 ```bash
-./scripts/switch-to-sydney.sh
+./scripts/cleanup-acme.sh rosa-syd
+oc --context=rosa-syd apply -k manifests/overlays/sydney/letsencrypt-production
 ```
 
-50/50 split:
+#### Melbourne
 
 ```bash
-oc --context=rosa-syd -n api-gateway patch dnspolicy shared-app-dns --type=merge -p '
-spec:
-  loadBalancing:
-    defaultGeo: true
-    geo: GEO-NA
-    weight: 50
-'
-
-oc --context=rosa-melb -n api-gateway patch dnspolicy shared-app-dns --type=merge -p '
-spec:
-  loadBalancing:
-    defaultGeo: true
-    geo: GEO-NA
-    weight: 50
-'
+./scripts/cleanup-acme.sh rosa-melb
+oc --context=rosa-melb apply -k manifests/overlays/melbourne/letsencrypt-production
 ```
 
-## 12. Troubleshooting
+This deletes stale:
 
-### Operator role script says the role already exists
+- `CertificateRequest`
+- `Certificate`
+- `Order`
+- `Challenge`
 
-That is fine. The script prints the existing ARN and exits successfully. Use that ARN in OperatorHub.
+---
 
-### Route53 secret script says namespace not found
+## Verify
 
-Use the updated script in this repo. It now applies the namespace using the same `oc` context passed on the command line.
-
-### DNS works in `dig` but not `curl`
-
-That is usually a local macOS DNS cache issue. Flush the cache and retry.
-
-### Direct HTTPS ELB tests
-
-Use SNI-preserving direct tests:
+### TLS policy
 
 ```bash
-curl -vk --connect-to greenblue.sandbox3573.opentlc.com:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 https://greenblue.sandbox3573.opentlc.com
-curl -vk --connect-to greenblue.sandbox3573.opentlc.com:443:ae2663d3b278c46cda6cc207c6b64f0c-743541281.ap-southeast-4.elb.amazonaws.com:443 https://greenblue.sandbox3573.opentlc.com
+oc --context=rosa-syd -n api-gateway get tlspolicy shared-app-gw-tls -o yaml
+oc --context=rosa-melb -n api-gateway get tlspolicy shared-app-gw-tls -o yaml
 ```
+
+Expected:
+
+- `Accepted=True`
+- `Enforced=True`
+
+### DNS policy
+
+```bash
+oc --context=rosa-syd -n api-gateway get dnspolicy shared-app-dns -o yaml
+oc --context=rosa-melb -n api-gateway get dnspolicy shared-app-dns -o yaml
+```
+
+Expected eventually:
+
+- `SubResourcesHealthy=True`
+- `Enforced=True`
+
+It is normal to see `AwaitingValidation` briefly.
+
+### Certificates
+
+```bash
+oc --context=rosa-syd -n api-gateway get certificate,certificaterequest
+oc --context=rosa-melb -n api-gateway get certificate,certificaterequest
+```
+
+Expected:
+
+- `Certificate READY=True`
+- `CertificateRequest READY=True`
+
+### Test direct ELBs with SNI
+
+#### Sydney
+
+```bash
+curl -vk \
+  --connect-to greenblue.sandbox3573.opentlc.com:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
+  https://greenblue.sandbox3573.opentlc.com
+```
+
+#### Melbourne
+
+```bash
+curl -vk \
+  --connect-to greenblue.sandbox3573.opentlc.com:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
+  https://greenblue.sandbox3573.opentlc.com
+```
+
+### Test public name
+
+```bash
+curl -vk https://greenblue.sandbox3573.opentlc.com
+```
+
+---
+
+## Traffic shifting
+
+### 100% Sydney
+
+```bash
+./scripts/set-weights.sh rosa-syd 100
+./scripts/set-weights.sh rosa-melb 0
+```
+
+### 100% Melbourne
+
+```bash
+./scripts/set-weights.sh rosa-syd 0
+./scripts/set-weights.sh rosa-melb 100
+```
+
+### 50 / 50
+
+```bash
+./scripts/set-weights.sh rosa-syd 50
+./scripts/set-weights.sh rosa-melb 50
+```
+
+---
+
+## Repo layout
+
+```text
+manifests/
+  base/
+  overlays/
+    sydney/
+      selfsigned/
+      letsencrypt-production/
+    melbourne/
+      selfsigned/
+      letsencrypt-production/
+scripts/
+  annotate-cert-manager-sa.sh
+  cleanup-acme.sh
+  create-cert-manager-operator-role.sh
+  create-route53-secret.sh
+  restart-kuadrant.sh
+  set-weights.sh
+```
+
+---
+
+## Lessons learned / important fixes
+
+These are baked into this repo because they were required in the lab:
+
+- After annotating `serviceaccount/cert-manager`, you must **delete the cert-manager pod** so the new pod gets AWS web identity env vars.
+- On ROSA STS, cert-manager DNS-01 must show:
+  - `AWS_ROLE_ARN`
+  - `AWS_WEB_IDENTITY_TOKEN_FILE`
+- If cert-manager is installed after Kuadrant, restart:
+  - `openshift-operators/deployment/kuadrant-operator-controller-manager`
+- Do **not** delete all pods in `openshift-operators`.
+- `oc get ... -w` only supports one resource type at a time.
+- If ACME gets stuck, delete stale `CertificateRequest`, `Certificate`, `Order`, and `Challenge` resources and re-apply.
+

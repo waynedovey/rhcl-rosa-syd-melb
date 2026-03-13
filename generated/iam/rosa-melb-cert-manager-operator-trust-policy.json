@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Condition": {
+        "StringEquals": {
+          "rh-oidc.s3.us-east-1.amazonaws.com/26anjg402drs6v8iq1bmq9m1sbj5j0d8:sub": "system:serviceaccount:cert-manager-operator:cert-manager-operator-controller-manager"
+        }
+      },
+      "Principal": {
+        "Federated": "arn:aws:iam::034362043716:oidc-provider/rh-oidc.s3.us-east-1.amazonaws.com/26anjg402drs6v8iq1bmq9m1sbj5j0d8"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity"
+    }
+  ]
+}
