@@ -9,9 +9,14 @@ This repo deploys:
 - TLS via either self-signed certs or Let's Encrypt DNS-01
 - traffic shifting between Sydney and Melbourne using `DNSPolicy` weights
 
-Validated hostname used in this repo:
+Validated hostname pattern used in this repo:
 
-- `greenblue.sandboxXXX.opentlc.com`
+- `greenblue.${DOMAIN}`
+
+At apply time, `${DOMAIN}` is rendered from your shell environment, for example:
+
+- `DOMAIN=sandbox4065.opentlc.com`
+- rendered hostname: `greenblue.sandbox4065.opentlc.com`
 
 Validated Route 53 hosted zone ID:
 
@@ -150,13 +155,15 @@ Follow this exact order.
 #### Sydney
 
 ```bash
-oc --context=rosa-syd apply -k manifests/overlays/sydney/selfsigned
+export DOMAIN="sandboxXXXX.opentlc.com"
+./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/selfsigned
 ```
 
 #### Melbourne
 
 ```bash
-oc --context=rosa-melb apply -k manifests/overlays/melbourne/selfsigned
+export DOMAIN="sandboxXXXX.opentlc.com"
+./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/selfsigned
 ```
 
 This creates:
