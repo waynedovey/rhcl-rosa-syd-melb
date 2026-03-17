@@ -8,7 +8,7 @@ spec:
     - name: shared-app-gw
       namespace: api-gateway
   hostnames:
-    - greenblue.${DOMAIN}
+    - replace-me.invalid
   rules:
     - matches:
         - path:

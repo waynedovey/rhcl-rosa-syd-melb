@@ -11,12 +11,13 @@ This repo deploys:
 
 Validated hostname pattern used in this repo:
 
-- `greenblue.${DOMAIN}`
+- `greenblue.<your-domain>`
 
-At apply time, `${DOMAIN}` is rendered from your shell environment, for example:
+This repo now uses **native Kustomize replacements** for the hostname, so `oc apply -k` works directly.
 
-- `DOMAIN=sandbox4065.opentlc.com`
-- rendered hostname: `greenblue.sandbox4065.opentlc.com`
+Set the hostname in each overlay's `domain-config.env`, for example:
+
+- `HOSTNAME=greenblue.sandbox4065.opentlc.com`
 
 Validated Route 53 hosted zone ID:
 
@@ -83,9 +84,9 @@ This repo assumes the public hosted zone already exists and is delegated correct
 Verify the zone ID:
 
 ```bash
-export DOMAIN='sandboxXXXX.opentlc.com'
+export BASE_DOMAIN='sandboxXXXX.opentlc.com'
 export ZONE_ID=$(aws route53 list-hosted-zones-by-name \
-  --dns-name "${DOMAIN}." \
+  --dns-name "${BASE_DOMAIN}." \
   --query 'HostedZones[0].Id' \
   --output text | sed 's|/hostedzone/||')
 
@@ -150,20 +151,32 @@ This repo’s role creation script does that.
 
 Follow this exact order.
 
+Before applying any overlay, update its `domain-config.env` file so the hostname is valid. Example:
+
+```bash
+cat > manifests/overlays/sydney/letsencrypt-production/domain-config.env <<EOF
+HOSTNAME=greenblue.sandboxXXXX.opentlc.com
+EOF
+
+cat > manifests/overlays/melbourne/letsencrypt-production/domain-config.env <<EOF
+HOSTNAME=greenblue.sandboxXXXX.opentlc.com
+EOF
+```
+
 ### Step 1. Create Service Mesh namespaces and runtime
 
 #### Sydney
 
 ```bash
-export DOMAIN="sandboxXXXX.opentlc.com"
-./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/selfsigned
+sed -i.bak 's|^HOSTNAME=.*|HOSTNAME=greenblue.sandboxXXXX.opentlc.com|' manifests/overlays/sydney/selfsigned/domain-config.env
+oc --context=rosa-syd apply -k manifests/overlays/sydney/selfsigned
 ```
 
 #### Melbourne
 
 ```bash
-export DOMAIN="sandboxXXXX.opentlc.com"
-./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/selfsigned
+sed -i.bak 's|^HOSTNAME=.*|HOSTNAME=greenblue.sandboxXXXX.opentlc.com|' manifests/overlays/melbourne/selfsigned/domain-config.env
+oc --context=rosa-melb apply -k manifests/overlays/melbourne/selfsigned
 ```
 
 This creates:
@@ -344,22 +357,22 @@ Expected:
 
 ```bash
 curl -vk \
-  --connect-to greenblue.${DOMAIN}:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
-  https://greenblue.${DOMAIN}
+  --connect-to greenblue.<your-domain>:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
+  https://greenblue.<your-domain>
 ```
 
 #### Melbourne
 
 ```bash
 curl -vk \
-  --connect-to greenblue.${DOMAIN}:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
-  https://greenblue.${DOMAIN}
+  --connect-to greenblue.<your-domain>:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
+  https://greenblue.<your-domain>
 ```
 
 ### Test public name
 
 ```bash
-curl -vk https://greenblue.${DOMAIN}
+curl -vk https://greenblue.<your-domain>
 ```
 
 ---
@@ -426,3 +439,8 @@ These are baked into this repo because they were required in the lab:
 - `oc get ... -w` only supports one resource type at a time.
 - If ACME gets stuck, delete stale `CertificateRequest`, `Certificate`, `Order`, and `Challenge` resources and re-apply.
 
+
+
+## Why `oc apply -k` was failing before
+
+Kustomize does not substitute shell variables embedded directly in YAML values such as `greenblue.<your-domain>`. The old repo only worked when rendered through `scripts/apply-overlay.sh`, which piped the output through `envsubst`. The manifests now use native Kustomize `replacements`, so `oc apply -k` works once `domain-config.env` is set.

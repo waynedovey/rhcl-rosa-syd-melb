@@ -9,7 +9,7 @@ spec:
   gatewayClassName: istio
   listeners:
     - name: https
-      hostname: greenblue.${DOMAIN}
+      hostname: replace-me.invalid
       port: 443
       protocol: HTTPS
       allowedRoutes:

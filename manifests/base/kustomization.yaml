@@ -8,5 +8,6 @@ resources:
   - istio.yaml
   - istiocni.yaml
   - gateway.yaml
-commonLabels:
-  app.kubernetes.io/part-of: rhcl-rosa-demo
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: rhcl-rosa-demo
