@@ -50,7 +50,9 @@ You need:
 
 ```bash
 oc config get-contexts -o name
+```
 
+```bash
 oc config rename-context default/api-rosa-syd-wyt2-p3-openshiftapps-com:443/cluster-admin rosa-syd
 oc config rename-context default/api-rosa-melb-zwxe-p3-openshiftapps-com:443/cluster-admin rosa-melb
 ```
