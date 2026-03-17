@@ -11,11 +11,11 @@ This repo deploys:
 
 Validated hostname used in this repo:
 
-- `greenblue.sandbox3573.opentlc.com`
+- `greenblue.sandboxXXX.opentlc.com`
 
 Validated Route 53 hosted zone ID:
 
-- `Z07828883BTBHTW06APRZ`
+- `Z00000000000000000000`
 
 Validated Let's Encrypt email:
 
@@ -46,6 +46,14 @@ You need:
 - access to both ROSA clusters
 
 ### 2. ROSA contexts
+
+
+```bash
+oc config get-contexts -o name
+
+oc config rename-context default/api-rosa-syd-wyt2-p3-openshiftapps-com:443/cluster-admin rosa-syd
+oc config rename-context default/api-rosa-melb-zwxe-p3-openshiftapps-com:443/cluster-admin rosa-melb
+```
 
 Expected contexts:
 
