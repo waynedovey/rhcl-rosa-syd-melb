@@ -33,3 +33,15 @@ hostname: greenblue.sandbox3271.opentlc.com
 hostnames:
   - greenblue.sandbox3271.opentlc.com
 ```
+
+
+## Applying overlays with DOMAIN
+
+Use the helper script so the base domain is rendered into `greenblue.${DOMAIN}`:
+
+```bash
+DOMAIN=sandbox5278.opentlc.com ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
+DOMAIN=sandbox5278.opentlc.com ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
+```
+
+If a cluster still has an older Deployment created from a previous selector layout, the script will automatically delete and recreate the rendered Deployment, then re-apply the manifest.
