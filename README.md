@@ -90,7 +90,7 @@ echo "$ZONE_ID"
 Expected:
 
 ```text
-Z07828883BTBHTW06APRZ
+Z00000000000000000000
 ```
 
 ### 4. Operators required on **both** clusters
