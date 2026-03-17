@@ -73,12 +73,12 @@ oc --context=rosa-melb whoami
 
 This repo assumes the public hosted zone already exists and is delegated correctly:
 
-- `sandbox3573.opentlc.com`
+- `sandboxXXXX.opentlc.com`
 
 Verify the zone ID:
 
 ```bash
-export DOMAIN='sandbox3573.opentlc.com'
+export DOMAIN='sandboxXXXX.opentlc.com'
 export ZONE_ID=$(aws route53 list-hosted-zones-by-name \
   --dns-name "${DOMAIN}." \
   --query 'HostedZones[0].Id' \
@@ -337,22 +337,22 @@ Expected:
 
 ```bash
 curl -vk \
-  --connect-to greenblue.sandbox3573.opentlc.com:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
-  https://greenblue.sandbox3573.opentlc.com
+  --connect-to greenblue.sandboxXXXX.opentlc.com:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
+  https://greenblue.sandboxXXXX.opentlc.com
 ```
 
 #### Melbourne
 
 ```bash
 curl -vk \
-  --connect-to greenblue.sandbox3573.opentlc.com:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
-  https://greenblue.sandbox3573.opentlc.com
+  --connect-to greenblue.sandboxXXXX.opentlc.com:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
+  https://greenblue.sandboxXXXX.opentlc.com
 ```
 
 ### Test public name
 
 ```bash
-curl -vk https://greenblue.sandbox3573.opentlc.com
+curl -vk https://greenblue.sandboxXXXX.opentlc.com
 ```
 
 ---
