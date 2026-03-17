@@ -337,22 +337,22 @@ Expected:
 
 ```bash
 curl -vk \
-  --connect-to greenblue.sandboxXXXX.opentlc.com:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
-  https://greenblue.sandboxXXXX.opentlc.com
+  --connect-to greenblue.${DOMAIN}:443:a5718f247bd254aa98a39e824691648b-1501888680.ap-southeast-2.elb.amazonaws.com:443 \
+  https://greenblue.${DOMAIN}
 ```
 
 #### Melbourne
 
 ```bash
 curl -vk \
-  --connect-to greenblue.sandboxXXXX.opentlc.com:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
-  https://greenblue.sandboxXXXX.opentlc.com
+  --connect-to greenblue.${DOMAIN}:443:af4950c338c0947a4bde6182f37a3d52-408642302.ap-southeast-4.elb.amazonaws.com:443 \
+  https://greenblue.${DOMAIN}
 ```
 
 ### Test public name
 
 ```bash
-curl -vk https://greenblue.sandboxXXXX.opentlc.com
+curl -vk https://greenblue.${DOMAIN}
 ```
 
 ---
