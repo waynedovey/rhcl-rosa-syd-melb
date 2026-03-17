@@ -11,3 +11,5 @@ resources:
 labels:
   - pairs:
       app.kubernetes.io/part-of: rhcl-rosa-demo
+    includeSelectors: false
+    includeTemplates: true
