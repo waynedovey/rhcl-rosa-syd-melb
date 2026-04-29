@@ -157,22 +157,22 @@ Do **not** run `oc apply -k` directly for overlays that contain `${DOMAIN}`.
 Use:
 
 ```bash
-DOMAIN=sandbox5278.opentlc.com ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
-DOMAIN=sandbox5278.opentlc.com ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
+DOMAIN=sandboxXXXX.opentlc.com ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
+DOMAIN=sandboxXXXX.opentlc.com ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
 ```
 
 To inspect the rendered YAML before applying:
 
 ```bash
-DOMAIN=sandbox5278.opentlc.com ./scripts/render-overlay.sh manifests/overlays/sydney/letsencrypt-production | grep -E 'hostname:|hostnames:'
+DOMAIN=sandboxXXXX.opentlc.com ./scripts/render-overlay.sh manifests/overlays/sydney/letsencrypt-production | grep -E 'hostname:|hostnames:'
 ```
 
 Expected:
 
 ```yaml
-hostname: greenblue.sandbox5278.opentlc.com
+hostname: greenblue.sandboxXXXX.opentlc.com
 hostnames:
-  - greenblue.sandbox5278.opentlc.com
+  - greenblue.sandboxXXXX.opentlc.com
 ```
 
 ---
