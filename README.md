@@ -15,8 +15,8 @@ Validated hostname pattern used in this repo:
 
 At apply time, `DOMAIN` is passed as the **base domain** from your shell environment, for example:
 
-- `DOMAIN=sandbox5278.opentlc.com`
-- rendered hostname: `greenblue.sandbox5278.opentlc.com`
+- `DOMAIN=sandboxXXXX.opentlc.com`
+- rendered hostname: `greenblue.sandboxXXXX.opentlc.com`
 
 Validated Route 53 hosted zone ID:
 
