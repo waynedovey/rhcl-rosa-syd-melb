@@ -11,7 +11,5 @@ spec:
     solvers:
       - dns01:
           route53:
-            hostedZoneID: Z07828883BTBHTW06APRZ
+            hostedZoneID: ${HOSTED_ZONE_ID}
             region: ap-southeast-2
-            secretAccessKeySecretRef:
-              name: ""

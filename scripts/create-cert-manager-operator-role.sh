@@ -1,23 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 usage() {
-  echo "Usage: $0 --cluster-name <name> --oc-context <context>"
+  echo "Usage: $0 --cluster-name <name> --oc-context <context> [--domain <domain>] [--hosted-zone-id <id>]"
+  echo
+  echo "Examples:"
+  echo "  DOMAIN=sandbox3733.opentlc.com $0 --cluster-name rosa-syd --oc-context rosa-syd"
+  echo "  $0 --cluster-name rosa-melb --oc-context rosa-melb --hosted-zone-id Z1042796G4NGC6ZWA1C4"
   exit 1
 }
 
 CLUSTER_NAME=""
 OC_CONTEXT=""
+DOMAIN_ARG=""
+HOSTED_ZONE_ID_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cluster-name) CLUSTER_NAME="$2"; shift 2 ;;
     --oc-context) OC_CONTEXT="$2"; shift 2 ;;
+    --domain) DOMAIN_ARG="$2"; shift 2 ;;
+    --hosted-zone-id) HOSTED_ZONE_ID_ARG="$2"; shift 2 ;;
     *) usage ;;
   esac
 done
 
 [[ -n "$CLUSTER_NAME" && -n "$OC_CONTEXT" ]] || usage
+
+DOMAIN_INPUT="${DOMAIN_ARG:-${DOMAIN:-}}"
+HOSTED_ZONE_ID="${HOSTED_ZONE_ID_ARG:-${HOSTED_ZONE_ID:-}}"
+
+if [[ -z "$HOSTED_ZONE_ID" ]]; then
+  if [[ -z "$DOMAIN_INPUT" ]]; then
+    echo "Error: set DOMAIN, pass --domain, or pass --hosted-zone-id." >&2
+    usage
+  fi
+  HOSTED_ZONE_ID="$("$SCRIPT_DIR/resolve-hosted-zone-id.sh" "$DOMAIN_INPUT")"
+fi
 
 AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 OIDC_URL="$(oc --context="$OC_CONTEXT" get authentication.config.openshift.io cluster -o jsonpath='{.spec.serviceAccountIssuer}' 2>/dev/null || true)"
@@ -66,20 +87,19 @@ cat > "$TMPDIR/policy.json" <<JSON
         "route53:ChangeResourceRecordSets",
         "route53:ListResourceRecordSets"
       ],
-      "Resource": "arn:aws:route53:::hostedzone/Z07828883BTBHTW06APRZ"
-    },
-    {
-      "Effect": "Allow",
-      "Action": "route53:ListHostedZonesByName",
-      "Resource": "*"
+      "Resource": "arn:aws:route53:::hostedzone/${HOSTED_ZONE_ID}"
     }
   ]
 }
 JSON
 
+echo "Using hosted zone ID: ${HOSTED_ZONE_ID}"
+
 if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
   ARN="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)"
   echo "IAM role already exists: $ROLE_NAME"
+  echo "Updating inline role policy for hosted zone ${HOSTED_ZONE_ID}"
+  aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name cert-manager-route53-inline --policy-document "file://$TMPDIR/policy.json" >/dev/null
   echo "Use this role ARN in OperatorHub and for cert-manager Route53 annotation:"
   echo "$ARN"
   exit 0
@@ -93,6 +113,7 @@ if ! aws iam get-policy --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${PO
 fi
 
 aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${POLICY_NAME}" >/dev/null
+aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name cert-manager-route53-inline --policy-document "file://$TMPDIR/policy.json" >/dev/null
 ARN="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)"
 
 echo "Created role ARN:"

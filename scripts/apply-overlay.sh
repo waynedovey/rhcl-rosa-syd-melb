@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ $# -lt 2 ]]; then
-  echo "Usage: DOMAIN=<base-domain> $0 <oc-context> <overlay-path>"
-  echo "Example: DOMAIN=sandbox3271.opentlc.com $0 rosa-syd manifests/overlays/sydney/letsencrypt-production"
+  echo "Usage: DOMAIN=<base-domain> [HOSTED_ZONE_ID=<zone-id>] $0 <oc-context> <overlay-path>"
+  echo "Example: DOMAIN=sandbox3733.opentlc.com $0 rosa-syd manifests/overlays/sydney/letsencrypt-production"
   exit 1
 fi
 
@@ -12,8 +14,12 @@ OVERLAY="$2"
 
 if [[ -z "${DOMAIN:-}" ]]; then
   echo "Error: DOMAIN environment variable is required."
-  echo "Example: DOMAIN=sandbox3271.opentlc.com $0 ${CONTEXT} ${OVERLAY}"
+  echo "Example: DOMAIN=sandbox3733.opentlc.com $0 ${CONTEXT} ${OVERLAY}"
   exit 1
+fi
+
+if [[ -z "${HOSTED_ZONE_ID:-}" ]]; then
+  HOSTED_ZONE_ID="$("$SCRIPT_DIR/resolve-hosted-zone-id.sh" "$DOMAIN")"
 fi
 
 TMP_RENDERED="$(mktemp)"
@@ -23,7 +29,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-oc kustomize "${OVERLAY}" | envsubst '${DOMAIN}' > "$TMP_RENDERED"
+echo "Using DOMAIN=${DOMAIN}"
+echo "Using HOSTED_ZONE_ID=${HOSTED_ZONE_ID}"
+
+oc kustomize "${OVERLAY}" | envsubst '${DOMAIN} ${HOSTED_ZONE_ID}' > "$TMP_RENDERED"
 
 set +e
 oc --context="${CONTEXT}" apply -f "$TMP_RENDERED" 2>&1 | tee "$TMP_OUTPUT"

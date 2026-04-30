@@ -18,9 +18,7 @@ At apply time, `DOMAIN` is passed as the **base domain** from your shell environ
 - `DOMAIN=sandboxXXXX.opentlc.com`
 - rendered hostname: `greenblue.sandboxXXXX.opentlc.com`
 
-Validated Route 53 hosted zone ID:
-
-- `Z00000000000000000000`
+Route 53 hosted zone ID is resolved dynamically from `DOMAIN` by the helper scripts in this repo.
 
 Validated Let's Encrypt email:
 
@@ -82,23 +80,23 @@ This repo assumes the public hosted zone already exists and is delegated correct
 
 - `sandboxXXXX.opentlc.com`
 
-Verify the zone ID:
+Resolve the zone dynamically from the base domain:
 
 ```bash
 export DOMAIN='sandboxXXXX.opentlc.com'
-export ZONE_ID=$(aws route53 list-hosted-zones-by-name \
-  --dns-name "${DOMAIN}." \
-  --query 'HostedZones[0].Id' \
-  --output text | sed 's|/hostedzone/||')
-
-echo "$ZONE_ID"
+./scripts/resolve-hosted-zone-id.sh "$DOMAIN"
 ```
 
-Expected:
+You can also export it explicitly if you want to inspect or override it:
 
-```text
-Z00000000000000000000
+```bash
+export DOMAIN='sandboxXXXX.opentlc.com'
+export HOSTED_ZONE_ID="$(./scripts/resolve-hosted-zone-id.sh "$DOMAIN")"
+
+echo "$HOSTED_ZONE_ID"
 ```
+
+The helper scripts in this repo will auto-resolve `HOSTED_ZONE_ID` from `DOMAIN` if you do not set it yourself.
 
 ### 4. Operators required on **both** clusters
 
@@ -117,7 +115,7 @@ Generate that **before** installing the operator:
 #### Sydney
 
 ```bash
-./scripts/create-cert-manager-operator-role.sh \
+DOMAIN=sandboxXXXX.opentlc.com ./scripts/create-cert-manager-operator-role.sh \
   --cluster-name rosa-syd \
   --oc-context rosa-syd
 ```
@@ -125,7 +123,7 @@ Generate that **before** installing the operator:
 #### Melbourne
 
 ```bash
-./scripts/create-cert-manager-operator-role.sh \
+DOMAIN=sandboxXXXX.opentlc.com ./scripts/create-cert-manager-operator-role.sh \
   --cluster-name rosa-melb \
   --oc-context rosa-melb
 ```
@@ -150,9 +148,9 @@ This repo’s role creation script does that.
 
 ## Important note about DOMAIN rendering
 
-Do **not** run `oc apply -k` directly for overlays that contain `${DOMAIN}`.
+Do **not** run `oc apply -k` directly for overlays that contain `${DOMAIN}` and `${HOSTED_ZONE_ID}`.
 
-`oc apply -k` and `oc kustomize` do **not** substitute shell variables by themselves. This repo uses helper scripts to render the manifests through `envsubst` before applying.
+`oc apply -k` and `oc kustomize` do **not** substitute shell variables by themselves. This repo uses helper scripts to render the manifests through `envsubst` before applying. Those scripts also auto-resolve `HOSTED_ZONE_ID` from `DOMAIN` unless you explicitly export `HOSTED_ZONE_ID` yourself.
 
 Use:
 
@@ -164,7 +162,7 @@ DOMAIN=sandboxXXXX.opentlc.com ./scripts/apply-overlay.sh rosa-melb manifests/ov
 To inspect the rendered YAML before applying:
 
 ```bash
-DOMAIN=sandboxXXXX.opentlc.com ./scripts/render-overlay.sh manifests/overlays/sydney/letsencrypt-production | grep -E 'hostname:|hostnames:'
+DOMAIN=sandboxXXXX.opentlc.com ./scripts/render-overlay.sh manifests/overlays/sydney/letsencrypt-production | grep -E 'hostname:|hostnames:|hostedZoneID:'
 ```
 
 Expected:
@@ -475,6 +473,7 @@ scripts/
   create-cert-manager-operator-role.sh
   create-route53-secret.sh
   render-overlay.sh
+  resolve-hosted-zone-id.sh
   restart-kuadrant.sh
   set-weights.sh
 ```
@@ -494,5 +493,6 @@ These are baked into this repo because they were required in the lab:
 - Do **not** delete all pods in `openshift-operators`.
 - `oc get ... -w` only supports one resource type at a time.
 - If ACME gets stuck, delete stale `CertificateRequest`, `Certificate`, `Order`, and `Challenge` resources and re-apply.
+- Hosted zone IDs must match the actual Route 53 zone for `${DOMAIN}`. This repo now resolves `HOSTED_ZONE_ID` dynamically from `DOMAIN`.
 - If a cluster still has an older Deployment from a previous selector layout, `scripts/apply-overlay.sh` will detect the immutable selector error, delete the rendered Deployment, and re-apply.
 
