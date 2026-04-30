@@ -245,33 +245,56 @@ Do **not** continue until the cert-manager namespace and pods exist.
 
 This step is required for Let's Encrypt DNS-01.
 
-To avoid copy/paste errors, derive the AWS account ID dynamically from your AWS CLI profiles, then build the role ARN for each cluster.
+This environment uses a **single AWS account** for both clusters. To make the workflow reusable across accounts, derive `ACCOUNT_ID` dynamically from the active AWS CLI identity, with the option to override it if needed.
+
+Run this with `bash`:
 
 ```bash
-SYD_AWS_PROFILE="rosa-syd"
-MELB_AWS_PROFILE="rosa-melb"
+bash <<'EOF'
+set -euo pipefail
 
-SYD_ACCOUNT_ID="$(aws --profile "$SYD_AWS_PROFILE" sts get-caller-identity --query Account --output text)"
-MELB_ACCOUNT_ID="$(aws --profile "$MELB_AWS_PROFILE" sts get-caller-identity --query Account --output text)"
+# Uses the active AWS CLI identity by default.
+# Override only if you need to force a specific account:
+# export ACCOUNT_ID="<target-account-id>"
+ACCOUNT_ID="${ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}"
+
+if [[ -z "$ACCOUNT_ID" || "$ACCOUNT_ID" == "None" ]]; then
+  echo "ERROR: Failed to determine ACCOUNT_ID from AWS CLI." >&2
+  echo "Run 'aws sts get-caller-identity' and make sure your AWS credentials are set." >&2
+  exit 1
+fi
 
 declare -A CERT_MANAGER_ROLE_ARNS=(
-  [rosa-syd]="arn:aws:iam::${SYD_ACCOUNT_ID}:role/rosa-syd-cert-manager-operator"
-  [rosa-melb]="arn:aws:iam::${MELB_ACCOUNT_ID}:role/rosa-melb-cert-manager-operator"
+  [rosa-syd]="arn:aws:iam::${ACCOUNT_ID}:role/rosa-syd-cert-manager-operator"
+  [rosa-melb]="arn:aws:iam::${ACCOUNT_ID}:role/rosa-melb-cert-manager-operator"
 )
 
 for CTX in rosa-syd rosa-melb; do
-  echo "Annotating $CTX with ${CERT_MANAGER_ROLE_ARNS[$CTX]}"
+  ROLE_ARN="${CERT_MANAGER_ROLE_ARNS[$CTX]}"
+  echo "Annotating ${CTX} with ${ROLE_ARN}"
+
   ./scripts/annotate-cert-manager-sa.sh \
     "$CTX" \
-    "${CERT_MANAGER_ROLE_ARNS[$CTX]}"
-  oc --context="$CTX" -n cert-manager get sa cert-manager -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}{"\n"}'
+    "$ROLE_ARN"
+
+  echo -n "Live SA annotation for ${CTX}: "
+  oc --context="$CTX" -n cert-manager get sa cert-manager \
+    -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}{"\n"}'
 done
+EOF
 ```
 
-This assumes you have AWS CLI profiles named `rosa-syd` and `rosa-melb`. If your local profile names differ, change `SYD_AWS_PROFILE` and `MELB_AWS_PROFILE` only.
+You can verify which account will be used with:
+
+```bash
+aws sts get-caller-identity
+```
+
+If your actual role names differ, keep the same dynamic `ACCOUNT_ID` logic and update only the role names in the `CERT_MANAGER_ROLE_ARNS` map.
 
 This script now:
 
+- derives `ACCOUNT_ID` dynamically from the active AWS CLI identity
 - annotates `serviceaccount/cert-manager`
 - deletes the cert-manager pod
 - waits for the new pod
