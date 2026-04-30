@@ -148,6 +148,90 @@ This repo’s role creation script does that.
 
 ---
 
+
+## Dynamic cert-manager IAM role discovery
+
+Do not hardcode the cert-manager IAM role ARN in the repo or in day-2 runbooks.
+
+The live source of truth is the `cert-manager` service account annotation on each cluster:
+
+```bash
+oc --context=rosa-syd  -n cert-manager get sa cert-manager -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}{"\n"}'
+oc --context=rosa-melb -n cert-manager get sa cert-manager -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}{"\n"}'
+```
+
+Expected output format:
+
+```text
+arn:aws:iam::<account-id>:role/<role-name>
+```
+
+Examples from this lab pattern:
+
+- Sydney: `arn:aws:iam::116981762143:role/rosa-syd-2-cert-manager-operator`
+- Melbourne: `arn:aws:iam::977099000999:role/rosa-melb-cert-manager-operator`
+
+### Pull the role ARN dynamically
+
+Use the helper script in this repo:
+
+```bash
+./scripts/get-cert-manager-role-arn.sh rosa-syd
+./scripts/get-cert-manager-role-arn.sh rosa-melb
+```
+
+### Pull both clusters at once
+
+```bash
+./scripts/list-cert-manager-roles.sh rosa-syd rosa-melb
+```
+
+Example output:
+
+```text
+rosa-syd   116981762143  arn:aws:iam::116981762143:role/rosa-syd-2-cert-manager-operator
+rosa-melb  977099000999  arn:aws:iam::977099000999:role/rosa-melb-cert-manager-operator
+```
+
+### Extract account ID and role name from the live ARN
+
+```bash
+ROLE_ARN="$(./scripts/get-cert-manager-role-arn.sh rosa-melb)"
+AWS_ACCOUNT_ID="$(echo "$ROLE_ARN" | cut -d: -f5)"
+ROLE_NAME="${ROLE_ARN##*/}"
+
+echo "$AWS_ACCOUNT_ID"
+echo "$ROLE_NAME"
+```
+
+### Use the live ARN when re-annotating the service account
+
+If you need to re-apply the same value or confirm drift, source it dynamically first instead of pasting a hardcoded ARN:
+
+```bash
+ROLE_ARN="$(./scripts/get-cert-manager-role-arn.sh rosa-melb)"
+./scripts/annotate-cert-manager-sa.sh rosa-melb "$ROLE_ARN"
+```
+
+### Validate the cert-manager pod is using that role
+
+```bash
+POD=$(oc --context=rosa-melb -n cert-manager get pod -l app.kubernetes.io/name=cert-manager -o jsonpath='{.items[0].metadata.name}')
+oc --context=rosa-melb -n cert-manager exec "$POD" -- sh -c 'env | egrep "AWS_ROLE_ARN|AWS_WEB_IDENTITY_TOKEN_FILE|AWS_REGION|AWS_DEFAULT_REGION"'
+```
+
+The `AWS_ROLE_ARN` value inside the pod should match the service account annotation exactly.
+
+### Important limitation
+
+This only discovers the role currently in use by the cluster. It does not create Route 53 permissions and it does not fix AWS-side `AccessDenied` errors. If cert-manager logs still show:
+
+```text
+failed to change Route 53 record set ... AccessDenied
+```
+
+then the IAM policy or hosted-zone access for that live role still needs to be fixed in AWS.
+
 ## Important note about DOMAIN rendering
 
 Do **not** run `oc apply -k` directly for overlays that contain `${DOMAIN}`.
