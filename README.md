@@ -15,8 +15,8 @@ Validated hostname pattern used in this repo:
 
 At apply time, `DOMAIN` is passed as the **base domain** from your shell environment, for example:
 
-- `DOMAIN=sandboxXXXX.opentlc.com`
-- rendered hostname: `greenblue.sandboxXXXX.opentlc.com`
+- `DOMAIN=$DOMAIN`
+- rendered hostname: `greenblue.$DOMAIN`
 
 Route 53 hosted zone ID is resolved dynamically from `DOMAIN` by the helper scripts in this repo.
 
@@ -78,19 +78,19 @@ oc --context=rosa-melb whoami
 
 This repo assumes the public hosted zone already exists and is delegated correctly:
 
-- `sandboxXXXX.opentlc.com`
+```bash
+export DOMAIN='sandbox931.opentlc.com'
+```
 
 Resolve the zone dynamically from the base domain:
 
 ```bash
-export DOMAIN='sandboxXXXX.opentlc.com'
 ./scripts/resolve-hosted-zone-id.sh "$DOMAIN"
 ```
 
 You can also export it explicitly if you want to inspect or override it:
 
 ```bash
-export DOMAIN='sandboxXXXX.opentlc.com'
 export HOSTED_ZONE_ID="$(./scripts/resolve-hosted-zone-id.sh "$DOMAIN")"
 
 echo "$HOSTED_ZONE_ID"
@@ -115,7 +115,7 @@ Generate that **before** installing the operator:
 #### Sydney
 
 ```bash
-DOMAIN=sandboxXXXX.opentlc.com ./scripts/create-cert-manager-operator-role.sh \
+DOMAIN=$DOMAIN ./scripts/create-cert-manager-operator-role.sh \
   --cluster-name rosa-syd \
   --oc-context rosa-syd
 ```
@@ -123,7 +123,7 @@ DOMAIN=sandboxXXXX.opentlc.com ./scripts/create-cert-manager-operator-role.sh \
 #### Melbourne
 
 ```bash
-DOMAIN=sandboxXXXX.opentlc.com ./scripts/create-cert-manager-operator-role.sh \
+DOMAIN=$DOMAIN ./scripts/create-cert-manager-operator-role.sh \
   --cluster-name rosa-melb \
   --oc-context rosa-melb
 ```
@@ -155,22 +155,22 @@ Do **not** run `oc apply -k` directly for overlays that contain `${DOMAIN}` and 
 Use:
 
 ```bash
-DOMAIN=sandboxXXXX.opentlc.com ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
-DOMAIN=sandboxXXXX.opentlc.com ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
+DOMAIN=$DOMAIN ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
+DOMAIN=$DOMAIN ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
 ```
 
 To inspect the rendered YAML before applying:
 
 ```bash
-DOMAIN=sandboxXXXX.opentlc.com ./scripts/render-overlay.sh manifests/overlays/sydney/letsencrypt-production | grep -E 'hostname:|hostnames:|hostedZoneID:'
+DOMAIN=$DOMAIN ./scripts/render-overlay.sh manifests/overlays/sydney/letsencrypt-production | grep -E 'hostname:|hostnames:|hostedZoneID:'
 ```
 
 Expected:
 
 ```yaml
-hostname: greenblue.sandboxXXXX.opentlc.com
+hostname: greenblue.$DOMAIN
 hostnames:
-  - greenblue.sandboxXXXX.opentlc.com
+  - greenblue.$DOMAIN
 ```
 
 ---
@@ -184,14 +184,14 @@ Follow this exact order.
 #### Sydney
 
 ```bash
-export DOMAIN="sandboxXXXX.opentlc.com"
+export DOMAIN="$DOMAIN"
 ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/selfsigned
 ```
 
 #### Melbourne
 
 ```bash
-export DOMAIN="sandboxXXXX.opentlc.com"
+export DOMAIN="$DOMAIN"
 ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/selfsigned
 ```
 
@@ -325,14 +325,14 @@ It does **not** delete all pods in `openshift-operators`.
 #### Sydney
 
 ```bash
-export DOMAIN="sandboxXXXX.opentlc.com"
+export DOMAIN="$DOMAIN"
 ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
 ```
 
 #### Melbourne
 
 ```bash
-export DOMAIN="sandboxXXXX.opentlc.com"
+export DOMAIN="$DOMAIN"
 ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
 ```
 
@@ -342,7 +342,7 @@ export DOMAIN="sandboxXXXX.opentlc.com"
 
 ```bash
 ./scripts/cleanup-acme.sh rosa-syd
-export DOMAIN="sandboxXXXX.opentlc.com"
+export DOMAIN="$DOMAIN"
 ./scripts/apply-overlay.sh rosa-syd manifests/overlays/sydney/letsencrypt-production
 ```
 
@@ -350,7 +350,7 @@ export DOMAIN="sandboxXXXX.opentlc.com"
 
 ```bash
 ./scripts/cleanup-acme.sh rosa-melb
-export DOMAIN="sandboxXXXX.opentlc.com"
+export DOMAIN="$DOMAIN"
 ./scripts/apply-overlay.sh rosa-melb manifests/overlays/melbourne/letsencrypt-production
 ```
 
