@@ -1,0 +1,17 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openshift-cert-manager-operator
+  namespace: cert-manager-operator
+spec:
+  channel: stable-v1
+  installPlanApproval: Automatic
+  name: openshift-cert-manager-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  # config.env is patched by each cluster overlay to inject the
+  # cluster-specific ROLEARN for ROSA STS.
+  config:
+    env:
+      - name: ROLEARN
+        value: PLACEHOLDER_REPLACED_BY_OVERLAY

@@ -98,39 +98,81 @@ echo "$HOSTED_ZONE_ID"
 
 The helper scripts in this repo will auto-resolve `HOSTED_ZONE_ID` from `DOMAIN` if you do not set it yourself.
 
-### 4. Operators required on **both** clusters
+### 4. Operators — install via Kustomize
 
-Install these from OperatorHub on **both** Sydney and Melbourne:
+This repo now installs all three required operators via Kustomize instead of the
+OperatorHub UI. A single helper script handles everything:
 
-- Red Hat Connectivity Link
-- Red Hat OpenShift Service Mesh 3
-- cert-manager Operator for Red Hat OpenShift
-
-### 5. cert-manager Operator role ARN prerequisite
-
-On ROSA STS, the **cert-manager Operator** install requires a role ARN in OperatorHub.
-
-Generate that **before** installing the operator:
-
-#### Sydney
+1. Creates (or reuses) the cert-manager operator IAM role for each cluster.
+2. Renders the Kustomize operator overlays with the correct role ARNs injected.
+3. Applies the rendered manifests to both clusters.
 
 ```bash
+DOMAIN=$DOMAIN ./scripts/install-operators.sh
+```
+
+Operators installed on **both** Sydney and Melbourne:
+
+| Operator | Namespace | Channel |
+|---|---|---|
+| Red Hat Connectivity Link | `openshift-operators` | `stable` |
+| Red Hat OpenShift Service Mesh 3 | `openshift-operators` | `stable` |
+| cert-manager Operator for Red Hat OpenShift | `cert-manager-operator` | `stable-v1` |
+
+Wait for all CSVs to reach `Succeeded` before continuing:
+
+```bash
+oc --context=rosa-syd  get csv -n openshift-operators
+oc --context=rosa-syd  get csv -n cert-manager-operator
+oc --context=rosa-melb get csv -n openshift-operators
+oc --context=rosa-melb get csv -n cert-manager-operator
+```
+
+#### cert-manager operator role ARNs (reference)
+
+If you need to retrieve or inspect the role ARNs without re-running the full
+install, run the underlying script directly:
+
+```bash
+# Sydney
 DOMAIN=$DOMAIN ./scripts/create-cert-manager-operator-role.sh \
   --cluster-name rosa-syd \
   --oc-context rosa-syd
-```
 
-#### Melbourne
-
-```bash
+# Melbourne
 DOMAIN=$DOMAIN ./scripts/create-cert-manager-operator-role.sh \
   --cluster-name rosa-melb \
   --oc-context rosa-melb
 ```
 
-The script prints the role ARN. Paste that ARN into the OperatorHub install dialog for cert-manager Operator.
+Both commands are idempotent. If the role already exists they print the
+existing ARN and exit without making changes.
 
-If the role already exists, the script prints the existing ARN and exits successfully.
+#### Operator Kustomize layout
+
+```text
+manifests/operators/
+  base/
+    kustomization.yaml
+    operatorgroup.yaml                  # global OperatorGroup for openshift-operators
+    subscription-rhcl.yaml             # Red Hat Connectivity Link
+    subscription-servicemesh.yaml      # OpenShift Service Mesh 3
+    cert-manager-operator-namespace.yaml
+    operatorgroup-cert-manager.yaml    # scoped OperatorGroup for cert-manager-operator ns
+    subscription-cert-manager.yaml     # cert-manager (ROLEARN placeholder)
+  overlays/
+    sydney/
+      kustomization.yaml               # patches ROLEARN with rosa-syd ARN
+    melbourne/
+      kustomization.yaml               # patches ROLEARN with rosa-melb ARN
+```
+
+### 5. cert-manager Operator role ARN prerequisite (manual reference)
+
+On ROSA STS the cert-manager Subscription `spec.config.env[ROLEARN]` must
+contain the cluster-specific role ARN. The `install-operators.sh` script handles
+this automatically. The underlying role creation script is idempotent and safe
+to re-run at any time.
 
 ### 6. cert-manager controller Route 53 role prerequisite
 
@@ -459,12 +501,28 @@ curl -vk https://greenblue.${DOMAIN}
 ```text
 manifests/
   base/
+  operators/
+    base/
+      kustomization.yaml
+      operatorgroup.yaml
+      subscription-rhcl.yaml
+      subscription-servicemesh.yaml
+      cert-manager-operator-namespace.yaml
+      operatorgroup-cert-manager.yaml
+      subscription-cert-manager.yaml
+    overlays/
+      sydney/
+        kustomization.yaml
+      melbourne/
+        kustomization.yaml
   overlays/
     sydney/
       selfsigned/
+      letsencrypt-staging/
       letsencrypt-production/
     melbourne/
       selfsigned/
+      letsencrypt-staging/
       letsencrypt-production/
 scripts/
   annotate-cert-manager-sa.sh
@@ -472,6 +530,7 @@ scripts/
   cleanup-acme.sh
   create-cert-manager-operator-role.sh
   create-route53-secret.sh
+  install-operators.sh
   render-overlay.sh
   resolve-hosted-zone-id.sh
   restart-kuadrant.sh
