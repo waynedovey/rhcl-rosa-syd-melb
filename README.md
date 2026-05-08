@@ -113,17 +113,23 @@ DOMAIN=$DOMAIN ./scripts/install-operators.sh
 
 Operators installed on **both** Sydney and Melbourne:
 
-| Operator | Namespace | Channel |
-|---|---|---|
-| Red Hat Connectivity Link | `openshift-operators` | `stable` |
-| Red Hat OpenShift Service Mesh 3 | `openshift-operators` | `stable` |
-| cert-manager Operator for Red Hat OpenShift | `cert-manager-operator` | `stable-v1` |
+| Operator | Package name | Installed namespace | Channel |
+|---|---|---|---|
+| Red Hat Connectivity Link | `rhcl-operator` | `kuadrant-system` | `stable` |
+| Red Hat OpenShift Service Mesh 3 | `servicemeshoperator3` | `openshift-operators` | `stable` |
+| cert-manager Operator for Red Hat OpenShift | `openshift-cert-manager-operator` | `cert-manager-operator` | `stable-v1` |
+
+> **Note on RHCL namespace:** Red Hat's official install docs place `rhcl-operator` in a dedicated
+> `kuadrant-system` namespace with its own scoped `OperatorGroup`. Using `openshift-operators`
+> with the package name `rhcl` will fail with `ResolutionFailed — no operators found in package rhcl`.
 
 Wait for all CSVs to reach `Succeeded` before continuing:
 
 ```bash
+oc --context=rosa-syd  get csv -n kuadrant-system
 oc --context=rosa-syd  get csv -n openshift-operators
 oc --context=rosa-syd  get csv -n cert-manager-operator
+oc --context=rosa-melb get csv -n kuadrant-system
 oc --context=rosa-melb get csv -n openshift-operators
 oc --context=rosa-melb get csv -n cert-manager-operator
 ```
@@ -154,9 +160,10 @@ existing ARN and exit without making changes.
 manifests/operators/
   base/
     kustomization.yaml
-    operatorgroup.yaml                  # global OperatorGroup for openshift-operators
-    subscription-rhcl.yaml             # Red Hat Connectivity Link
-    subscription-servicemesh.yaml      # OpenShift Service Mesh 3
+    kuadrant-namespace.yaml             # Namespace: kuadrant-system (for RHCL)
+    operatorgroup-kuadrant.yaml         # scoped OperatorGroup for kuadrant-system
+    subscription-rhcl.yaml             # rhcl-operator in kuadrant-system
+    subscription-servicemesh.yaml      # servicemeshoperator3 in openshift-operators
     cert-manager-operator-namespace.yaml
     operatorgroup-cert-manager.yaml    # scoped OperatorGroup for cert-manager-operator ns
     subscription-cert-manager.yaml     # cert-manager (ROLEARN placeholder)
@@ -504,7 +511,8 @@ manifests/
   operators/
     base/
       kustomization.yaml
-      operatorgroup.yaml
+      kuadrant-namespace.yaml
+      operatorgroup-kuadrant.yaml
       subscription-rhcl.yaml
       subscription-servicemesh.yaml
       cert-manager-operator-namespace.yaml

@@ -1,9 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - operatorgroup.yaml
+  # Red Hat Connectivity Link (Kuadrant) — package name: rhcl-operator, namespace: kuadrant-system
+  - kuadrant-namespace.yaml
+  - operatorgroup-kuadrant.yaml
   - subscription-rhcl.yaml
+  # Red Hat OpenShift Service Mesh 3 — installs into openshift-operators (all-namespaces, no OG needed)
   - subscription-servicemesh.yaml
+  # cert-manager Operator for Red Hat OpenShift — scoped to cert-manager-operator namespace
   - cert-manager-operator-namespace.yaml
   - operatorgroup-cert-manager.yaml
   - subscription-cert-manager.yaml

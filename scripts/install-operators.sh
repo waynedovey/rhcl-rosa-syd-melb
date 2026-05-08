@@ -83,6 +83,9 @@ done
 #
 # CERT_MANAGER_OPERATOR_ROLE_ARN is exported so that envsubst can substitute
 # the placeholder in the cert-manager Subscription patch inside the overlay.
+#
+# Also deletes any stale subscription named "rhcl" (wrong package name) that
+# may have been created by a previous version of these manifests.
 # ---------------------------------------------------------------------------
 echo
 echo "================================================================"
@@ -102,6 +105,14 @@ for CLUSTER in rosa-syd rosa-melb; do
   echo "--- Applying operators overlay to ${CLUSTER} ---"
   echo "    Overlay : ${OVERLAY}"
   echo "    ROLEARN : ${CERT_MANAGER_OPERATOR_ROLE_ARN}"
+
+  # Remove stale wrong-name subscription if present (created by earlier manifests)
+  for STALE_NS in openshift-operators kuadrant-system; do
+    if oc --context="${CLUSTER}" -n "${STALE_NS}" get subscription rhcl &>/dev/null; then
+      echo "    Removing stale subscription rhcl from ${STALE_NS} on ${CLUSTER}..."
+      oc --context="${CLUSTER}" -n "${STALE_NS}" delete subscription rhcl --ignore-not-found
+    fi
+  done
 
   TMP_RENDERED="$(mktemp)"
   trap 'rm -f "${TMP_RENDERED}"' EXIT
